@@ -63,4 +63,10 @@ public class SecureServer {
         socket.close();
         serverSocket.close();
     }
+
+    public void sendMessage(String msg) throws Exception {
+        byte[] encrypted = CryptoUtil.encryptAES(msg, aesKey);
+        out.writeInt(encrypted.length);
+        out.write(encrypted);
+    }
 }

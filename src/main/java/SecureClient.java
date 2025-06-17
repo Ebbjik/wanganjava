@@ -56,4 +56,11 @@ public class SecureClient {
     public void close() throws IOException {
         socket.close();
     }
+
+    public String receiveMessage() throws Exception {
+        int length = in.readInt();
+        byte[] encrypted = new byte[length];
+        in.readFully(encrypted);
+        return CryptoUtil.decryptAES(encrypted, aesKey);
+    }
 }
