@@ -47,35 +47,73 @@ public class App {
         }
     }
 
-    private static void communicate(SecureServer server, SecureClient client)
-            throws Exception {
+    private static void communicate(SecureServer server, SecureClient client) {
         Scanner scanner = new Scanner(System.in);
 
-        try {
-            while (true) {
-                System.out.print("请输入消息(或输入'exit'退出): ");
-                String message = scanner.nextLine();
+        // 创建一个线程用于发送消息
+        Thread senderThread = new Thread(() -> {
+            try {
+                while (true) {
+                    System.out.print("请输入消息(或输入'exit'退出): ");
+                    String message = scanner.nextLine();
 
-                if ("exit".equalsIgnoreCase(message)) {
-                    break;
-                }
+                    if ("exit".equalsIgnoreCase(message)) {
+                        break;
+                    }
 
-                if (server != null) {
-                    // 服务端发送消息
-                    server.sendMessage(message);
-                    // 接收回复
-                    String reply = server.receiveMessage();
-                    System.out.println("收到回复: " + reply);
-                } else {
-                    // 客户端发送消息
-                    client.sendMessage(message);
-                    // 接收回复
-                    String reply = client.receiveMessage();
-                    System.out.println("收到回复: " + reply);
+                    if (server != null) {
+                        // 服务端发送消息
+                        server.sendMessage(message);
+                    } else {
+                        // 客户端发送消息
+                        client.sendMessage(message);
+                    }
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+                // 或者根据需要添加其他的异常处理逻辑
+                System.out.println("发送消息时发生错误: " + e.getMessage());
+            } finally {
+                scanner.close();
             }
-        } finally {
-            scanner.close();
+        });
+
+        // 创建一个线程用于接收消息
+        Thread receiverThread = new Thread(() -> {
+            try {
+                while (true) {
+                    String reply;
+                    if (server != null) {
+                        reply = server.receiveMessage();
+                    } else {
+                        reply = client.receiveMessage();
+                    }
+
+                    if (reply == null) {
+                        break; // 假设如果接收到null则退出接收线程
+                    }
+
+                    System.out.println("收到回复: " + reply);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
+        // 启动发送线程和接收线程
+        senderThread.start();
+        receiverThread.start();
+
+        // 等待发送线程结束
+        try {
+            senderThread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
+
+        // 退出接收线程，这里可以通过向接收线程发送退出信号来优雅地关闭接收线程
+        // 这里假设当发送线程结束时，接收线程也会自然结束，或者你有其他方式来结束接收线程
+        receiverThread.interrupt();
     }
+
 }
