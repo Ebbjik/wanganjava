@@ -2,7 +2,9 @@
 /*
  * 灵活的双模式安全通信系统
  */
+import java.io.IOException;
 import java.util.Scanner;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class App {
     private static final int PORT = 12345;
@@ -30,7 +32,6 @@ public class App {
 
                 // 通信完成后释放服务端
                 communicate(server, null);
-                server.close();
             } else if (choice == 2) {
                 // 客户端模式
                 SecureClient client = new SecureClient(HOST, PORT);
@@ -38,7 +39,6 @@ public class App {
 
                 // 通信完成后释放客户端
                 communicate(null, client);
-                client.close();
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -49,39 +49,66 @@ public class App {
 
     private static void communicate(SecureServer server, SecureClient client) {
         Scanner scanner = new Scanner(System.in);
+        AtomicBoolean exitFlag = new AtomicBoolean(false); // 标志变量，用于指示是否退出
 
         // 创建一个线程用于发送消息
         Thread senderThread = new Thread(() -> {
             try {
-                while (true) {
+                while (!exitFlag.get()) { // 根据退出标志判断是否继续发送消息
                     System.out.print("请输入消息(或输入'exit'退出): ");
                     String message = scanner.nextLine();
 
                     if ("exit".equalsIgnoreCase(message)) {
-                        break;
-                    }
-
-                    if (server != null) {
-                        // 服务端发送消息
-                        server.sendMessage(message);
+                        exitFlag.set(true); // 设置退出标志
+                        if (server != null) {
+                            // 服务端发送消息
+                            server.sendMessage("exit");
+                        } else {
+                            // 客户端发送消息
+                            client.sendMessage("exit");
+                        }
+                        try {
+                            Thread.sleep(1000); // 等待一段时间以确保消息发送完毕
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        break; // 退出发送循环
                     } else {
-                        // 客户端发送消息
-                        client.sendMessage(message);
+                        if (server != null) {
+                            // 服务端发送消息
+                            server.sendMessage(message);
+                        } else {
+                            // 客户端发送消息
+                            client.sendMessage(message);
+                        }
                     }
                 }
             } catch (Exception e) {
-                e.printStackTrace();
-                // 或者根据需要添加其他的异常处理逻辑
-                System.out.println("发送消息时发生错误: " + e.getMessage());
+                if (!"Socket closed".equalsIgnoreCase(e.getMessage())) {
+                    e.printStackTrace();
+                    System.out.println("发送消息时发生错误: " + e.getMessage());
+                }
             } finally {
                 scanner.close();
+                try {
+                    if (server != null) {
+                        System.out.println("发送=服务端连接已关闭");
+                        server.close(); // 关闭服务端连接
+                    } else if (client != null) {
+                        System.out.println("发送=客户端连接已关闭");
+                        client.close(); // 关闭客户端连接
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    System.err.println("发送=关闭连接时发生错误: " + e.getMessage());
+                }
             }
         });
 
         // 创建一个线程用于接收消息
         Thread receiverThread = new Thread(() -> {
             try {
-                while (true) {
+                while (!exitFlag.get()) { // 根据退出标志判断是否继续接收消息
                     String reply;
                     if (server != null) {
                         reply = server.receiveMessage();
@@ -89,14 +116,36 @@ public class App {
                         reply = client.receiveMessage();
                     }
 
-                    if (reply == null) {
-                        break; // 假设如果接收到null则退出接收线程
+                    if ("exit".equalsIgnoreCase(reply)) {
+                        exitFlag.set(true); // 设置退出标志
+                        System.out.println("收到退出信号，即将关闭连接");
+                        break; // 退出接收循环
                     }
 
                     System.out.println("收到回复: " + reply);
                 }
+            } catch (java.io.EOFException e) {
+                // 处理EOFException异常，表示连接已关闭
+                System.out.println("接收=连接已关闭");
+                exitFlag.set(true); // 设置退出标志
             } catch (Exception e) {
-                e.printStackTrace();
+                if (!"Socket closed".equalsIgnoreCase(e.getMessage())) {
+                    e.printStackTrace();
+                    System.out.println("接收消息时发生错误: " + e.getMessage());
+                }
+            } finally {
+                try {
+                    if (server != null) {
+                        System.out.println("接收=服务端连接已关闭");
+                        server.close(); // 关闭服务端连接
+                    } else if (client != null) {
+                        System.out.println("接收=客户端连接已关闭");
+                        client.close(); // 关闭客户端连接
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    System.err.println("接收=关闭连接时发生错误: " + e.getMessage());
+                }
             }
         });
 
@@ -111,9 +160,15 @@ public class App {
             e.printStackTrace();
         }
 
-        // 退出接收线程，这里可以通过向接收线程发送退出信号来优雅地关闭接收线程
-        // 这里假设当发送线程结束时，接收线程也会自然结束，或者你有其他方式来结束接收线程
-        receiverThread.interrupt();
+        // 等待接收线程结束
+        try {
+            receiverThread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        // 确保在所有线程结束后关闭 Scanner
+        scanner.close();
     }
 
 }
