@@ -53,14 +53,65 @@ public class SecureClient {
         out.write(encrypted);
     }
 
-    public void close() throws IOException {
-        socket.close();
-    }
-
     public String receiveMessage() throws Exception {
         int length = in.readInt();
         byte[] encrypted = new byte[length];
         in.readFully(encrypted);
-        return CryptoUtil.decryptAES(encrypted, aesKey);
+        String message = CryptoUtil.decryptAES(encrypted, aesKey);
+
+        // 文件接收逻辑
+        if (message.equals("[FILE]")) {
+            String fileName = CryptoUtil.decryptAES(readEncrypted(), aesKey);
+            long fileSize = Long.parseLong(CryptoUtil.decryptAES(readEncrypted(), aesKey));
+
+            File receivedFile = new File("received_" + fileName);
+            try (FileOutputStream fos = new FileOutputStream(receivedFile)) {
+                long remaining = fileSize;
+                while (remaining > 0) {
+                    int chunkLen = in.readInt();
+                    byte[] chunkEncrypted = new byte[chunkLen];
+                    in.readFully(chunkEncrypted);
+                    byte[] chunk = CryptoUtil.decryptAESBytes(chunkEncrypted, aesKey);
+                    fos.write(chunk);
+                    remaining -= chunk.length;
+                }
+            }
+
+            return "收到文件: " + fileName;
+        }
+
+        return message;
+    }
+
+    public void sendFile(File file) throws Exception {
+        // 1. 发送文件标识头
+        sendMessage("[FILE]");
+
+        // 2. 发送文件名和文件大小（加密）
+        sendMessage(file.getName());
+        sendMessage(String.valueOf(file.length()));
+
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                byte[] actualBytes = new byte[bytesRead];
+                System.arraycopy(buffer, 0, actualBytes, 0, bytesRead);
+                byte[] encryptedChunk = CryptoUtil.encryptAESBytes(actualBytes, aesKey);
+                out.writeInt(encryptedChunk.length);
+                out.write(encryptedChunk);
+            }
+        }
+    }
+
+    private byte[] readEncrypted() throws IOException {
+        int len = in.readInt();
+        byte[] data = new byte[len];
+        in.readFully(data);
+        return data;
+    }
+
+    public void close() throws IOException {
+        socket.close();
     }
 }

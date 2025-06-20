@@ -17,5 +17,5 @@ dependencies {
 }
 
 application {
-    mainClass = 'App' // 如果是包内类，请写全路径，如 com.example.App
+    mainClass = 'AppWithGUI' // 如果是包内类，请写全路径，如 com.example.App
 }

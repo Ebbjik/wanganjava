@@ -25,7 +25,7 @@ public class SecureServer {
         in = new DataInputStream(socket.getInputStream());
         out = new DataOutputStream(socket.getOutputStream());
 
-        // 接收客户端公钥和签名
+        // 身份验证（略）
         String clientPubKeyStr = in.readUTF();
         String clientSignature = in.readUTF();
         PublicKey clientPubKey = KeyFactory.getInstance("RSA").generatePublic(
@@ -36,7 +36,7 @@ public class SecureServer {
         }
         System.out.println("客户端身份已验证");
 
-        // 发送服务器公钥和签名
+        // 发送公钥和签名
         String serverPubKeyStr = Base64.getEncoder().encodeToString(serverKeyPair.getPublic().getEncoded());
         String serverSignature = CryptoUtil.sign(serverPubKeyStr, serverKeyPair.getPrivate());
         out.writeUTF(serverPubKeyStr);
@@ -56,17 +56,68 @@ public class SecureServer {
         int length = in.readInt();
         byte[] encrypted = new byte[length];
         in.readFully(encrypted);
-        return CryptoUtil.decryptAES(encrypted, aesKey);
-    }
+        String message = CryptoUtil.decryptAES(encrypted, aesKey);
 
-    public void close() throws IOException {
-        socket.close();
-        serverSocket.close();
+        // 文件标识
+        if (message.equals("[FILE]")) {
+            String fileName = CryptoUtil.decryptAES(readEncrypted(), aesKey);
+            long fileSize = Long.parseLong(CryptoUtil.decryptAES(readEncrypted(), aesKey));
+
+            File outputFile = new File("received_" + fileName);
+            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                long remaining = fileSize;
+                while (remaining > 0) {
+                    int chunkLen = in.readInt();
+                    byte[] chunkEncrypted = new byte[chunkLen];
+                    in.readFully(chunkEncrypted);
+                    byte[] chunk = CryptoUtil.decryptAESBytes(chunkEncrypted, aesKey);
+                    fos.write(chunk);
+                    remaining -= chunk.length;
+                }
+            }
+
+            return "收到文件: " + fileName;
+        }
+
+        return message;
     }
 
     public void sendMessage(String msg) throws Exception {
         byte[] encrypted = CryptoUtil.encryptAES(msg, aesKey);
         out.writeInt(encrypted.length);
         out.write(encrypted);
+    }
+
+    public void sendFile(File file) throws Exception {
+        // 1. 发送文件标识头
+        sendMessage("[FILE]");
+
+        // 2. 发送文件名 + 文件大小（加密发送）
+        sendMessage(file.getName());
+        sendMessage(String.valueOf(file.length()));
+
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                byte[] actualBytes = new byte[bytesRead];
+                System.arraycopy(buffer, 0, actualBytes, 0, bytesRead);
+                byte[] encryptedChunk = CryptoUtil.encryptAESBytes(actualBytes, aesKey);
+                out.writeInt(encryptedChunk.length);
+                out.write(encryptedChunk);
+            }
+        }
+    }
+
+    private byte[] readEncrypted() throws IOException {
+        int len = in.readInt();
+        byte[] data = new byte[len];
+        in.readFully(data);
+        return data;
+    }
+
+    public void close() throws IOException {
+        socket.close();
+        serverSocket.close();
     }
 }

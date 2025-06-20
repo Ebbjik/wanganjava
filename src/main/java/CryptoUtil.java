@@ -113,4 +113,33 @@ public class CryptoUtil {
         cipher.init(Cipher.DECRYPT_MODE, key);
         return new String(cipher.doFinal(data));
     }
+
+    /**
+     * 使用指定的AES密钥对字节数组进行加密（用于二进制文件等场景）。
+     *
+     * @param data 要加密的字节数据。
+     * @param key  用于加密的AES密钥。
+     * @return 加密后的字节数组。
+     * @throws Exception 如果加密过程中发生错误。
+     */
+    public static byte[] encryptAESBytes(byte[] data, SecretKey key) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES");
+        cipher.init(Cipher.ENCRYPT_MODE, key);
+        return cipher.doFinal(data);
+    }
+
+    /**
+     * 使用指定的AES密钥对字节数组进行解密（用于二进制文件等场景）。
+     *
+     * @param data 要解密的字节数据。
+     * @param key  用于解密的AES密钥。
+     * @return 解密后的字节数组。
+     * @throws Exception 如果解密过程中发生错误。
+     */
+    public static byte[] decryptAESBytes(byte[] data, SecretKey key) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES");
+        cipher.init(Cipher.DECRYPT_MODE, key);
+        return cipher.doFinal(data);
+    }
+
 }
